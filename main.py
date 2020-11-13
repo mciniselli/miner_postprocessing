@@ -163,8 +163,9 @@ def remove_wrong_records(java_files):
             for line in f:
                 check_record(line, os.path.join(path_remove_wrong_records, "result.txt"))
 
+    return os.path.join(path_remove_wrong_records, "result.txt")
 
-def remove_longer_methods(max_len):
+def remove_longer_methods(max_len, input_file):
     path_remove_longer_methods = "data/miner_postprocessing/remove_longer_methods"
 
     if os.path.exists(path_remove_longer_methods) == False:
@@ -174,21 +175,24 @@ def remove_longer_methods(max_len):
     for f in files:
         os.remove(os.path.join(path_remove_longer_methods, f))
 
-    records_path = "data/miner_postprocessing/remove_wrong_records/result.txt"
+    # records_path = "data/miner_postprocessing/remove_wrong_records/result.txt"
+    records_path=input_file
     save_path = "data/miner_postprocessing/remove_longer_methods/result.txt"
     with open(records_path) as f:
         for line in f:
             data = json.loads(line)
 
-            if int(data["len_before"]) > 100 or int(data["len_after"]) > 100:
+            if int(data["len_before"]) > max_len or int(data["len_after"]) > max_len:
                 continue
+
 
             with open(save_path, 'a+') as outfile:
                 json.dump(data, outfile)
                 outfile.write('\n')
 
+    return save_path
 
-def remove_duplicates():
+def remove_duplicates(input_file):
     path_remove_duplicates = "data/miner_postprocessing/remove_duplicates"
 
     if os.path.exists(path_remove_duplicates) == False:
@@ -198,8 +202,10 @@ def remove_duplicates():
     for f in files:
         os.remove(os.path.join(path_remove_duplicates, f))
 
-    records_path = "data/miner_postprocessing/remove_longer_methods/result.txt"
+    # records_path = "data/miner_postprocessing/remove_longer_methods/result.txt"
+    records_path=input_file
     save_path = "data/miner_postprocessing/remove_duplicates/result.txt"
+
 
     commits = list()
     dict_positions = dict()
@@ -233,6 +239,7 @@ def remove_duplicates():
             json.dump(data, outfile)
             outfile.write('\n')
 
+    return save_path
 
 '''
     data = {}
@@ -254,7 +261,7 @@ def remove_duplicates():
     data["len_after"] = "{}".format(len(tokens_after))
 '''
 
-def export_files_masked():
+def export_files_masked(input_file):
 
     path_export_files_masked = "data/miner_postprocessing/export_files_masked"
 
@@ -265,7 +272,8 @@ def export_files_masked():
     for f in files:
         os.remove(os.path.join(path_export_files_masked, f))
 
-    records_path = "data/miner_postprocessing/remove_duplicates/result.txt"
+    # records_path = "data/miner_postprocessing/remove_duplicates/result.txt"
+    records_path=input_file
 
     fields_to_export=["id_internal", "id_commit", "repo"]
 
@@ -294,8 +302,8 @@ def export_files_masked():
             after_index = data["mask_after_index"].split(" ")
             start_after = int(after_index[0])
             end_after = int(after_index[1])
-            masked_before=" ".join(before_code[:start_before+1])+" <x> " + " ".join(before_code[end_before+1:])
-            masked_after=" ".join(after_code[:start_after+1])+" <x> " + " ".join(after_code[end_after+1:])
+            masked_before=" ".join(before_code[:start_before+1])+" <x>" + " ".join(before_code[end_before+1:])
+            masked_after=" ".join(after_code[:start_after+1])+" <x>" + " ".join(after_code[end_after+1:])
 
             if masked_before != masked_after: # it should not happen
                 print("ERROR")
@@ -320,12 +328,14 @@ def main():
     java_files = [f for f in files if f.endswith(".txt")]
     print(java_files)
 
-    # remove_wrong_records(java_files)
-    # remove_longer_methods(100)
-    #
-    # remove_duplicates()
+    output=""
 
-    # export_files_masked()
+    output=remove_wrong_records(java_files)
+    output=remove_longer_methods(150, output)
+
+    output=remove_duplicates(output)
+
+    export_files_masked(output)
 
 if __name__ == "__main__":
     main()
