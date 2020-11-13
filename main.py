@@ -2,10 +2,13 @@ import json
 import os
 import sys
 
+from utils.input_output import write_file
+
 import codecs
 '''
 get the list of all files
 '''
+
 def getListOfFiles(dirName):
     # create a list of file and sub directories
     # names in the given directory
@@ -131,7 +134,8 @@ def check_record(record, save_path):
 
     data["before"] = str(tokens_before)
     data["after"] = str(tokens_after)
-    data["mask"] = "{} {}".format(start_condition + 1, end_before - 1)
+    data["mask_before_index"] = "{} {}".format(start_condition + 1, end_before - 1)
+    data["mask_after_index"] = "{} {}".format(start_condition + 1, end_after - 1)
     data["len_before"] = "{}".format(len(tokens_before))
     data["len_after"] = "{}".format(len(tokens_after))
 
@@ -230,6 +234,84 @@ def remove_duplicates():
             outfile.write('\n')
 
 
+'''
+    data = {}
+    data["id_internal"] = id_internal
+    data["tot_processed"] = tot_processed
+    data["before"] = before
+    data["after"] = after
+    data["id_commit"] = id_commit
+    data["repo"] = repo
+    data["date_commit"] = date_commit
+    data["before_api"] = before_api
+    data["after_api"] = after_api
+    data["URL"] = URL
+    data["message"] = message
+    data["file_path"] = file_path
+    data["mask_before_index"] = "{} {}".format(start_condition + 1, end_before - 1)
+    data["mask_after_index"] = "{} {}".format(start_condition + 1, end_after - 1)
+    data["len_before"] = "{}".format(len(tokens_before))
+    data["len_after"] = "{}".format(len(tokens_after))
+'''
+
+def export_files_masked():
+
+    path_export_files_masked = "data/miner_postprocessing/export_files_masked"
+
+    if os.path.exists(path_export_files_masked) == False:
+        os.makedirs(path_export_files_masked)
+
+    files = os.listdir(path_export_files_masked)
+    for f in files:
+        os.remove(os.path.join(path_export_files_masked, f))
+
+    records_path = "data/miner_postprocessing/remove_duplicates/result.txt"
+
+    fields_to_export=["id_internal", "id_commit", "repo"]
+
+    for field in fields_to_export:
+        list_to_export=list()
+        with open(records_path) as f:
+            for line in f:
+                data = json.loads(line)
+                list_to_export.append(data[field])
+                
+        write_file(os.path.join(path_export_files_masked, "{}.txt".format(field)), list_to_export)
+
+    list_masked_code=list()
+    list_mask_before=list()
+    list_mask_after=list()
+
+    with open(records_path) as f:
+        for line in f:
+            data=json.loads(line)
+            before_code=eval(data["before"])
+            before_index=data["mask_before_index"].split(" ")
+            start_before=int(before_index[0])
+            end_before=int(before_index[1])
+
+            after_code=eval(data["after"])
+            after_index = data["mask_after_index"].split(" ")
+            start_after = int(after_index[0])
+            end_after = int(after_index[1])
+            masked_before=" ".join(before_code[:start_before+1])+" <x> " + " ".join(before_code[end_before+1:])
+            masked_after=" ".join(after_code[:start_after+1])+" <x> " + " ".join(after_code[end_after+1:])
+
+            if masked_before != masked_after: # it should not happen
+                print("ERROR")
+
+            mask_before=" ".join(before_code[start_before+1:end_before+1]) + "<z>"
+            mask_after=" ".join(after_code[start_after+1:end_after+1]) + "<z>"
+
+            list_masked_code.append(masked_before)
+            list_mask_before.append(mask_before)
+            list_mask_after.append(mask_after)
+
+    write_file(os.path.join(path_export_files_masked, "{}.txt".format("masked_code")), list_masked_code)
+    write_file(os.path.join(path_export_files_masked, "{}.txt".format("mask_before")), list_mask_before)
+    write_file(os.path.join(path_export_files_masked, "{}.txt".format("mask_after")), list_mask_after)
+
+
 def main():
     print("start mining")
 
@@ -238,11 +320,12 @@ def main():
     java_files = [f for f in files if f.endswith(".txt")]
     print(java_files)
 
-    remove_wrong_records(java_files)
-    remove_longer_methods(100)
+    # remove_wrong_records(java_files)
+    # remove_longer_methods(100)
+    #
+    # remove_duplicates()
 
-    remove_duplicates()
-
+    # export_files_masked()
 
 if __name__ == "__main__":
     main()
