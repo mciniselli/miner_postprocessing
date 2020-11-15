@@ -3,28 +3,15 @@ import os
 import sys
 
 from utils.input_output import write_file
+from utils.utilities import *
+
+from utils.textprocessing import TextProcessing
+
+from utils.input_output import *
 
 import codecs
-'''
-get the list of all files
-'''
 
-def getListOfFiles(dirName):
-    # create a list of file and sub directories
-    # names in the given directory
-    listOfFile = os.listdir(dirName)
-    allFiles = list()
-    # Iterate over all the entries
-    for entry in listOfFile:
-        # Create full path
-        fullPath = os.path.join(dirName, entry)
-        # If entry is a directory then get the list of files in this directory
-        if os.path.isdir(fullPath):
-            allFiles = allFiles + getListOfFiles(fullPath)
-        else:
-            allFiles.append(fullPath)
-
-    return allFiles
+import requests
 
 '''
 given the list of tokens and the index of the first token that is different in before and after code, it returns the start and the end token of the if/for or while condition before that position
@@ -57,8 +44,14 @@ def check_record(record, save_path):
     tokens_before = eval(tokens_before)
     tokens_after = eval(tokens_after)
 
+    tokens_before.append("}")
+    tokens_after.append("}")
+
     tokens_before = [t.strip() for t in tokens_before]
     tokens_after = [t.strip() for t in tokens_after]
+
+    tokens_before = [t for t in tokens_before if len(t)>0]
+    tokens_after = [t for t in tokens_after if len(t)>0]
 
     a = len(tokens_before)
     # remove if there exists special tokens
@@ -302,14 +295,31 @@ def export_files_masked(input_file):
             after_index = data["mask_after_index"].split(" ")
             start_after = int(after_index[0])
             end_after = int(after_index[1])
-            masked_before=" ".join(before_code[:start_before+1])+" <x>" + " ".join(before_code[end_before+1:])
-            masked_after=" ".join(after_code[:start_after+1])+" <x>" + " ".join(after_code[end_after+1:])
+            # masked_before=" ".join(before_code[:start_before+1])+" <x>" + " ".join(before_code[end_before+1:])
+            # masked_after=" ".join(after_code[:start_after+1])+" <x>" + " ".join(after_code[end_after+1:])
 
-            if masked_before != masked_after: # it should not happen
+            masked_bef_1, index_bef_1 = return_code(before_code[:start_before+1], data["before_code"], False)
+            masked_bef_2, index_bef_2=return_code(before_code[end_before+1:], data["before_code"], True)
+
+            masked_before= masked_bef_1 +" <x>" + masked_bef_2
+
+            masked_aft_1, index_aft_1=return_code(after_code[:start_after+1], data["after_code"], False)
+            masked_aft_2, index_aft_2=return_code(after_code[end_after+1:], data["after_code"], True)
+
+            masked_after= masked_aft_1 +" <x>" + masked_aft_2
+
+
+            if masked_before != masked_after: # it should not happen (only some cases when the developer changed the spaces out of the if while or loop)
                 print("ERROR")
 
-            mask_before=" ".join(before_code[start_before+1:end_before+1]) + "<z>"
-            mask_after=" ".join(after_code[start_after+1:end_after+1]) + "<z>"
+            # mask_before=" ".join(before_code[start_before+1:end_before+1]) + "<z>"
+            # mask_after=" ".join(after_code[start_after+1:end_after+1]) + "<z>"
+            mask_before=data["before_code"][index_bef_1:index_bef_2] + "<z>"
+            mask_after=data["after_code"][index_aft_1:index_aft_2] + "<z>"
+
+
+            # mask_before= return_code(before_code[start_before+1::end_before+1], data["before_code"], False)+ "<z>"
+            # mask_after= return_code(after_code[start_after+1::end_after+1], data["after_code"], False)+ "<z>"
 
             list_masked_code.append(masked_before)
             list_mask_before.append(mask_before)
@@ -318,6 +328,220 @@ def export_files_masked(input_file):
     write_file(os.path.join(path_export_files_masked, "{}.txt".format("masked_code")), list_masked_code)
     write_file(os.path.join(path_export_files_masked, "{}.txt".format("mask_before")), list_mask_before)
     write_file(os.path.join(path_export_files_masked, "{}.txt".format("mask_after")), list_mask_after)
+
+def return_code(tokens, text, reverse):
+
+    if reverse==False:
+
+        text_new=text
+        for t in tokens:
+            text_new=text_new.replace(t, " "*(len(t)), 1)
+
+        for i, t in enumerate(text_new):
+            if t!=" ":
+                return text[:i].strip(), i
+    else:
+
+        text_new = text[::-1]
+        for t in tokens[::-1]:
+            text_new = text_new.replace(t[::-1], " " *(len(t)), 1)
+
+        for i, t in enumerate(text_new):
+            if t != " ":
+                return text[::-1][:i][::-1].strip(), len(text)-i
+
+
+def add_original_code(input_file):
+
+    records=read_file(input_file)
+
+    path_add_original_code = "data/miner_postprocessing/add_original_code"
+
+    if os.path.exists(path_add_original_code) == False:
+        os.makedirs(path_add_original_code)
+
+    files = os.listdir(path_add_original_code)
+    for f in files:
+        os.remove(os.path.join(path_add_original_code, f))
+
+
+    save_path = "data/miner_postprocessing/add_original_code/result.txt"
+
+    for i, r in enumerate(records):
+        print()
+        data=json.loads(r)
+        print("{} out of {}".format(i, len(records)))
+        #before
+        URL=data["before_api"]
+
+        response = requests.get(url=URL)
+
+        code = (response.content).decode("utf-8")
+
+        write_file("code.java", [code])
+
+        java_path = os.path.join(os.getcwd(), "code.java")
+        xml_path = os.path.join(os.getcwd(), "code.xml")
+
+        run_command("srcml {} -o {}".format(java_path, xml_path), os.getcwd())
+
+        f = open(xml_path, "r")
+        textxml = ""
+        skip_line = True
+        for x in f:
+            # print(x)
+            if skip_line == True:
+                skip_line = False
+                continue
+            if len(x.strip()) == 0:
+                continue
+            textxml += x.strip() + " "
+
+        f.close()
+
+        t=TextProcessing(textxml)
+        t.remove_comments()
+        t.remove_tags()
+
+        text_no_tab=(t.text).replace("\t", " ")
+        tokens_temp=text_no_tab.split("|_|")
+
+        tokens_with_spaces=list()
+        for t in tokens_temp:
+            if len(t) == 0:
+                continue
+            if t==" ":
+                tokens_with_spaces.append(t)
+            elif t[0]==" " and t[-1]==" ":
+                tokens_with_spaces.append(" ")
+                tokens_with_spaces.append(t.strip())
+                tokens_with_spaces.append(" ")
+
+            elif t[0]==" ":
+                tokens_with_spaces.append(" ")
+                tokens_with_spaces.append(t.strip())
+            elif t[-1] == " ":
+                tokens_with_spaces.append(t.strip())
+                tokens_with_spaces.append(" ")
+            else:
+                tokens_with_spaces.append(t)
+
+        tokens_with_spaces=[t for t in tokens_with_spaces if len(t)>0]
+        # print(tokens_with_spaces)
+
+        tokens=eval(data["before"])
+        # print(" ".join(tokens))
+        before_code=check_if_equal(tokens, tokens_with_spaces, i)
+
+        data["before_code"]=before_code
+
+        # after
+        URL = data["after_api"]
+
+        response = requests.get(url=URL)
+
+        code = (response.content).decode("utf-8")
+
+        write_file("code.java", [code])
+
+        java_path = os.path.join(os.getcwd(), "code.java")
+        xml_path = os.path.join(os.getcwd(), "code.xml")
+
+        run_command("srcml {} -o {}".format(java_path, xml_path), os.getcwd())
+
+        f = open(xml_path, "r")
+        textxml = ""
+        skip_line = True
+        for x in f:
+            # print(x)
+            if skip_line == True:
+                skip_line = False
+                continue
+            if len(x.strip()) == 0:
+                continue
+            textxml += x.strip() + " "
+
+        f.close()
+
+        t = TextProcessing(textxml)
+        t.remove_comments()
+        t.remove_tags()
+
+        tokens_temp = t.text.split("|_|")
+        write_file("ccc.txt", tokens_temp)
+        tokens_with_spaces = list()
+        for t in tokens_temp:
+            if len(t) == 0:
+                continue
+            if t==" ":
+                tokens_with_spaces.append(t)
+            elif t[0]==" " and t[-1]==" ":
+                tokens_with_spaces.append(" ")
+                tokens_with_spaces.append(t.strip())
+                tokens_with_spaces.append(" ")
+
+            elif t[0]==" ":
+                tokens_with_spaces.append(" ")
+                tokens_with_spaces.append(t.strip())
+            elif t[-1] == " ":
+                tokens_with_spaces.append(t.strip())
+                tokens_with_spaces.append(" ")
+            else:
+                tokens_with_spaces.append(t)
+
+        tokens_with_spaces = [t for t in tokens_with_spaces if len(t) > 0]
+        # print(tokens_with_spaces)
+
+        tokens = eval(data["after"])
+        # print(" ".join(tokens))
+        after_code = check_if_equal(tokens, tokens_with_spaces, i)
+
+        data["after_code"] = after_code
+
+        # if we're not able to get the original code we skip the iteration
+        # it is generally due to a wrong method that was wrongly cut so that it does not finish with a } (so it is not correct)
+        if after_code==None or before_code==None:
+            print(i)
+            continue
+        with open(save_path, 'a+') as outfile:
+            json.dump(data, outfile)
+            outfile.write('\n')
+
+
+def check_if_equal(tokens, tokens_with_spaces, index):
+
+    num_tokens_with_spaces=len(tokens_with_spaces)
+
+    index_tokens_not_empty=list()
+    for i, t in enumerate(tokens_with_spaces):
+        if t != " ":
+            index_tokens_not_empty.append(i)
+
+    for start in range(num_tokens_with_spaces):
+        curr_index=0
+        breaked=False
+        for i, k in enumerate(tokens):
+
+            if start+curr_index not in index_tokens_not_empty:
+                if curr_index==0:
+                    breaked=True
+                    break
+                curr_index+=1
+            if k != tokens_with_spaces[start+curr_index]:
+                breaked=True
+                break
+            else:
+                a=1
+            curr_index+=1
+        if breaked==False:
+            return "".join(tokens_with_spaces[start:start+curr_index])
+
+    if (1==1):
+        write_file("aaa_{}.txt".format(index), tokens)
+        write_file("bbb_{}.txt".format(index), tokens_with_spaces)
+        a=1
+        return None
+
 
 
 def main():
@@ -330,12 +554,16 @@ def main():
 
     output=""
 
-    output=remove_wrong_records(java_files)
-    output=remove_longer_methods(150, output)
+    # output=remove_wrong_records(java_files)
+    # output=remove_longer_methods(150, output)
+    #
+    # output=remove_duplicates(output)
+    #
+    # add_original_code("data/miner_postprocessing/remove_duplicates/result.txt")
 
-    output=remove_duplicates(output)
+    export_files_masked("data/miner_postprocessing/add_original_code/result.txt")
 
-    export_files_masked(output)
+
 
 if __name__ == "__main__":
     main()
