@@ -467,6 +467,9 @@ def add_original_code(input_file):
         t.remove_comments()
         t.remove_tags()
 
+        text_no_tab=(t.text).replace("\t", " ")
+        tokens_temp=text_no_tab.split("|_|")
+
         tokens_temp = t.text.split("|_|")
         write_file("ccc.txt", tokens_temp)
         tokens_with_spaces = list()
