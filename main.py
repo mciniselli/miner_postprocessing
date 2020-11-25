@@ -140,7 +140,9 @@ def check_record(record, save_path):
         print(e)
         print(data)
 
-
+'''
+We check if all records are OK. Record that does not pass the check_record test are discarted
+'''
 def remove_wrong_records(java_files):
     path_remove_wrong_records = "data/miner_postprocessing/remove_wrong_records"
 
@@ -158,6 +160,9 @@ def remove_wrong_records(java_files):
 
     return os.path.join(path_remove_wrong_records, "result.txt")
 
+'''
+Remove all records whose length is greater than max_len
+'''
 def remove_longer_methods(max_len, input_file):
     path_remove_longer_methods = "data/miner_postprocessing/remove_longer_methods"
 
@@ -185,6 +190,9 @@ def remove_longer_methods(max_len, input_file):
 
     return save_path
 
+'''
+Remove all duplicates
+'''
 def remove_duplicates(input_file):
     path_remove_duplicates = "data/miner_postprocessing/remove_duplicates"
 
@@ -253,7 +261,9 @@ def remove_duplicates(input_file):
     data["len_before"] = "{}".format(len(tokens_before))
     data["len_after"] = "{}".format(len(tokens_after))
 '''
-
+'''
+Export data file (id_internal, id_commit, repo, masked_code, before_code, after_code
+'''
 def export_files_masked(input_file):
 
     path_export_files_masked = "data/miner_postprocessing/export_files_masked"
@@ -329,6 +339,9 @@ def export_files_masked(input_file):
     write_file(os.path.join(path_export_files_masked, "{}.txt".format("mask_before")), list_mask_before)
     write_file(os.path.join(path_export_files_masked, "{}.txt".format("mask_after")), list_mask_after)
 
+'''
+return the source code from the whole file
+'''
 def return_code(tokens, text, reverse):
 
     if reverse==False:
@@ -349,8 +362,9 @@ def return_code(tokens, text, reverse):
         for i, t in enumerate(text_new):
             if t != " ":
                 return text[::-1][:i][::-1].strip(), len(text)-i
-
-
+'''
+Add code before and code after to the json (the code before is made up by all the tokens but instead of putting a space between each token we put a space only if there is a space in the source code)
+'''
 def add_original_code(input_file):
 
     records=read_file(input_file)
@@ -544,6 +558,120 @@ def check_if_equal(tokens, tokens_with_spaces, index):
         write_file("bbb_{}.txt".format(index), tokens_with_spaces)
         a=1
         return None
+'''
+Print a result file to check the changes between before and after
+'''
+def inspect_data():
+
+    save_folder = "data/miner_postprocessing/inspect_data"
+
+    if os.path.exists(save_folder) == False:
+        os.makedirs(save_folder)
+
+    files = os.listdir(save_folder)
+    for f in files:
+        os.remove(os.path.join(save_folder, f))
+
+    save_file = "data/miner_postprocessing/inspect_data/result.txt"
+
+    input_folder="data/miner_postprocessing/export_files_masked"
+
+    masked_code=read_file(os.path.join(input_folder, "masked_code.txt"))
+    mask_before=read_file(os.path.join(input_folder, "mask_before.txt"))
+    mask_after=read_file(os.path.join(input_folder, "mask_after.txt"))
+
+    result=list()
+
+    for x, y, z in zip(masked_code, mask_before, mask_after):
+        result.append("----------")
+        masked_parts= x.split("<x>")
+        result.append(masked_parts[0])
+        result.append("-- "+y.replace("<z>", ""))
+        result.append("++ "+z.replace("<z>", ""))
+        result.append(masked_parts[1])
+
+    write_file(save_file, result)
+
+
+def count_occurrences(base_path):
+    subdirs = [x[0] for x in os.walk(base_path)]
+
+    num_for=0
+    num_if=0
+    num_while=0
+
+    len_method=list()
+    len_masked=list()
+
+    num_for_ok=0
+    num_if_ok=0
+    num_while_ok=0
+
+    len_method_ok=list()
+    len_masked_ok=list()
+
+
+    for s in subdirs:
+        if "result" in s:
+            method_file=os.path.join(s, "methods.txt")
+            masked_method_file=os.path.join(s, "masked_methods.txt")
+            methods=read_file(method_file)
+            masked_methods=read_file(masked_method_file)
+
+            for masked_method in masked_methods:
+
+                masked_method_splitted=masked_method.split("|_|")
+
+                method_id=int(masked_method_splitted[1])
+
+                method=methods[method_id-1]
+
+                type=masked_method_splitted[6]
+                if type=="IF":
+                    num_if+=1
+                elif type=="FOR":
+                    num_for+=1
+                else:
+                    num_while+=1
+
+                method_token=eval((method.split("|_|"))[1])
+
+                num_tokens=0
+                for t in method_token:
+                    if t!=" ":
+                        num_tokens+=1
+
+                len_method.append(num_tokens)
+                start_masked=int(masked_method_splitted[4])
+                end_masked=int(masked_method_splitted[5])
+
+                tokens_condiion=method_token[start_masked:end_masked]
+                num_tokens_condition=0
+                for t in tokens_condiion:
+                    if t!=" ":
+                        num_tokens_condition+=1
+
+
+                len_masked.append(num_tokens_condition)
+
+                condition="".join(tokens_condiion)
+                condition=condition.replace(" ", "")
+
+                if "&&" in condition or "||" in condition:
+                    continue
+
+                if "!=null" in condition or "==null"  in condition:
+                    if type == "IF":
+                        num_if_ok += 1
+                    elif type == "FOR":
+                        num_for_ok += 1
+                    else:
+                        num_while_ok += 1
+
+
+                    len_method_ok.append(num_tokens)
+                    len_masked_ok.append(num_tokens_condition)
+
 
 
 
@@ -564,9 +692,12 @@ def main():
     #
     # add_original_code("data/miner_postprocessing/remove_duplicates/result.txt")
 
-    export_files_masked("data/miner_postprocessing/add_original_code/result.txt")
+    # export_files_masked("data/miner_postprocessing/add_original_code/result.txt")
 
+    # inspect_data()
 
+    # count_occurrences("/home/matteoc/dataset_creation_3_chunks/dataset_creation_1")
+    count_occurrences("result")
 
 if __name__ == "__main__":
     main()
